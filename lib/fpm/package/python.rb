@@ -105,15 +105,16 @@ class FPM::Package::Python < FPM::Package
       pyproject_toml = path_to_package
     end
 
-    if File.exist?(setup_py)
-      logger.debug("Do job with setup.py")
-      load_package_info(setup_py)
-      install_to_staging(setup_py)
-    elsif File.exist?(pyproject_toml)
+    # @todo Swap it! - TOML priority is for debugging only!
+    if File.exist?(pyproject_toml)
       logger.debug("Do job with pyproject.toml")
       wheel_path = build_py_wheel(setup_py)
       load_package_info_wheel(setup_py, wheel_path)
       install_to_staging_toml(setup_py)
+    elsif File.exist?(setup_py)
+      logger.debug("Do job with setup.py")
+      load_package_info(setup_py)
+      install_to_staging(setup_py)
     else
       logger.error("Could not find neither 'setup.py' nor 'pyproject.toml'", :path => path_to_package)
       raise "Unable to find python package; tried #{setup_py} and #{pyproject_toml}"
