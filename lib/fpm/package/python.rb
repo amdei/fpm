@@ -222,11 +222,18 @@ class FPM::Package::Python < FPM::Package
       flags += [ "--wheel-dir", wheel_dir ]
       flags += [ "--use-pep517"]
       flags += [ "--no-input"]
+      flags += [ "--no-deps"]
       flags += [ "--disable-pip-version-check"]
       flags += [ "--no-python-version-warning"]
       #      flags += [ "--verbose --verbose --verbose"]
       opt = "w"  # w == wipe
       flags += [ "--exists-action", opt]
+      opt = ":all:"
+      flags += [ "--no-binary", opt]
+      opt = "off"
+      flags += [ "--progress-bar", opt]
+      # @todo --config-settings for PEP 517 build backend (KEY=VALUE, can be multiple)
+
 
       safesystem(*attributes[:python_pip], "wheel", ".", *flags)
     end
