@@ -219,7 +219,7 @@ class FPM::Package::Python < FPM::Package
 
       flags = [ "--python", attributes[:python_bin] ]
       flags += [ "--wheel-dir", wheel_dir ]
-      #      flags += [ "--use-pep517"]
+      flags += [ "--use-pep517"]
       flags += [ "--no-input"]
       flags += [ "--disable-pip-version-check"]
       flags += [ "--no-python-version-warning"]

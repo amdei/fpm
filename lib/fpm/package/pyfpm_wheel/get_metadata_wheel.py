@@ -12,25 +12,38 @@ class get_metadata_wheel:
     def __init__(self, wheel_path):
         self.wheel_path = wheel_path
 
-#    @staticmethod
+    def get_home_url(self, project_urls):
+        res = dict([i.strip() for i in x.split(',')] for x in project_urls)
+        return res.get('Home', None)
+
     def run(self, output_path):
 
         fpm_wheel = Wheel(self.wheel_path)
         data = {
             "name": fpm_wheel.name,
             "version": fpm_wheel.version,
-            "author": "%s <%s>" % (fpm_wheel.author, fpm_wheel.author_email),
             "description": fpm_wheel.summary,
             "license": fpm_wheel.license,
-            "url": fpm_wheel.home_page,
         }
-# @todo FIXME!!!
-#        if dist.metadata.has_ext_modules():
-#            data["architecture"] = "native"
-#        else:
-#            data["architecture"] = "all"
 
-        data["architecture"] = "all"
+        if fpm_wheel.author:
+            data["author"] = "%s <%s>" % (fpm_wheel.author, fpm_wheel.author_email)
+        else:
+            data["author"] = "%s" % (fpm_wheel.author_email)
+
+        if fpm_wheel.home_page:
+            data["url"] =  fpm_wheel.home_page
+        else:
+            data["url"] =  self.get_home_url(fpm_wheel.project_urls)
+
+        # @todo FIXME!!!
+        if fpm_wheel.requires_external:
+            data["architecture"] = "native"
+        else:
+            data["architecture"] = "all"
+
+        print('REQ:', fpm_wheel.requires, file=sys.stderr)
+        print('REQ DIST:', fpm_wheel.requires_dist, file=sys.stderr)
 
         final_deps = []
 
