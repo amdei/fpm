@@ -111,7 +111,8 @@ class FPM::Package::Python < FPM::Package
       install_to_staging(setup_py)
     elsif File.exist?(pyproject_toml)
       logger.debug("Do job with pyproject.toml")
-      load_package_info_toml(setup_py)
+      wheel_path = build_py_wheel(setup_py)
+      load_package_info_wheel(setup_py, wheel_path)
       install_to_staging_toml(setup_py)
     else
       logger.error("Could not find neither 'setup.py' nor 'pyproject.toml'", :path => path_to_package)
@@ -203,8 +204,42 @@ class FPM::Package::Python < FPM::Package
     return dirs.first
   end # def download
 
-  # Load the package information like name, version, dependencies via pyproject.toml.
-  def load_package_info_toml(setup_data)
+  # Build Python wheel file (*.whl).
+  def build_py_wheel(setup_data)
+    project_dir = File.dirname(setup_data)
+
+    # prefix = "/"
+    # prefix = attributes[:prefix] unless attributes[:prefix].nil?
+
+    wheel_dir = "./fpm-wheel"
+    # Some assume $PWD == current directory of package, so let's
+    # chdir first.
+    ::Dir.chdir(project_dir) do
+      #      wheel_dir = project_dir + "/fpm-wheel"
+
+      flags = [ "--python", attributes[:python_bin] ]
+      flags += [ "--wheel-dir", wheel_dir ]
+      #      flags += [ "--use-pep517"]
+      flags += [ "--no-input"]
+      flags += [ "--disable-pip-version-check"]
+      flags += [ "--no-python-version-warning"]
+      #      flags += [ "--verbose --verbose --verbose"]
+      opt = "w"  # w == wipe
+      flags += [ "--exists-action", opt]
+
+      safesystem(*attributes[:python_pip], "wheel", ".", *flags)
+    end
+
+    files = ::Dir.glob(File.join(project_dir, wheel_dir, "*.whl"))
+    if files.length != 1
+      raise "Unexpected directory layout after `pip wheel ...`. This might be an fpm bug? The directory is #{build_path}"
+    end
+
+    return files[0]
+  end # def build_py_wheel
+
+  # Load the package information like name, version, dependencies from wheel file.
+  def load_package_info_wheel(setup_data, wheel_path)
     if !attributes[:python_package_prefix].nil?
       attributes[:python_package_name_prefix] = attributes[:python_package_prefix]
     end
@@ -223,13 +258,13 @@ class FPM::Package::Python < FPM::Package
     end
 
     begin
-      safesystem("#{attributes[:python_bin]} -c 'import importlib_metadata'")
+      safesystem("#{attributes[:python_bin]} -c 'import importlib.metadata'")
     rescue FPM::Util::ProcessFailed => e
-      logger.error("Your python environment is missing a working importlib_metadata module. I tried to find the 'importlib_metadata' module but failed.", :python => attributes[:python_bin], :error => e)
-      raise FPM::Util::ProcessFailed, "Python (#{attributes[:python_bin]}) is missing importlib_metadata module."
+      logger.error("Your python environment is missing a working importlib.metadata module. I tried to find the 'importlib.metadata' module but failed.", :python => attributes[:python_bin], :error => e)
+      raise FPM::Util::ProcessFailed, "Python (#{attributes[:python_bin]}) is missing importlib.metadata module."
     end
 
-    # Add ./pyfpm/ to the python library path
+    # Add ./pyfpm_wheel/ to the python library path
     pylib = File.expand_path(File.dirname(__FILE__))
 
     # chdir to the directory holding setup.py because some python setup.py's assume that you are
@@ -240,10 +275,10 @@ class FPM::Package::Python < FPM::Package
       tmp = build_path("metadata.json")
 
       toml_metadata_code = [
-        "from pyfpm_toml import get_metadata_toml",
-        "gmt = get_metadata_toml.get_metadata_toml()",
+        "from pyfpm_wheel import get_metadata_wheel",
+        "gmt = get_metadata_wheel.get_metadata_wheel('#{wheel_path}')",
         "gmt.run('#{tmp}')"
-      ].join("; ")
+      ].join("\n")
 
       get_metadata_cmd = "env PYTHONPATH=#{pylib}:$PYTHONPATH #{attributes[:python_bin]} " \
         " -c " \
@@ -255,23 +290,23 @@ class FPM::Package::Python < FPM::Package
       #       end
 
       # Capture the output, which will be JSON metadata describing this python
-      # package. See fpm/lib/fpm/package/pyfpm_toml/get_metadata.py for more
+      # package. See fpm/lib/fpm/package/pyfpm_wheel/get_metadata.py for more
       # details.
-      logger.info("fetching package metadata", :get_metadata_cmd => get_metadata_cmd)
+      logger.info("fetching package wheel metadata", :get_metadata_cmd => get_metadata_cmd)
 
       success = safesystem(get_metadata_cmd)
       #%x{#{get_metadata_cmd}}
       if !success
-        logger.error("pyfpm_toml get_metadata failed", :command => get_metadata_cmd,
+        logger.error("pyfpm_wheel get_metadata failed", :command => get_metadata_cmd,
                      :exitcode => $?.exitstatus)
-        raise "An unexpected error occurred while processing the pyproject.toml file"
+        raise "An unexpected error occurred while processing the wheel file"
       end
       File.read(tmp)
     end
 
-    logger.debug("result from `pyfpm_toml get_metadata`", :data => output)
+    logger.debug("result from `pyfpm_wheel get_metadata`", :data => output)
     metadata = JSON.parse(output)
-    logger.info("object output of pyfpm_toml get_metadata", :json => metadata)
+    logger.info("object output of pyfpm_wheel get_metadata", :json => metadata)
 
     self.architecture = metadata["architecture"]
     self.description = metadata["description"]
@@ -323,7 +358,7 @@ class FPM::Package::Python < FPM::Package
         self.dependencies << "#{name} #{cmp} #{version}"
       end
     end # if attributes[:python_dependencies?]
-  end # def load_package_info_toml
+  end # def load_package_info_wheel
 
 
   # Load the package information like name, version, dependencies via setup.py.
