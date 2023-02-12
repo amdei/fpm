@@ -99,17 +99,25 @@ class FPM::Package::Python < FPM::Package
 
     if File.directory?(path_to_package)
       setup_py = File.join(path_to_package, "setup.py")
+      pyproject_toml = File.join(path_to_package, "pyproject.toml")
     else
       setup_py = path_to_package
+      pyproject_toml = path_to_package
     end
 
-    if !File.exist?(setup_py)
-      logger.error("Could not find 'setup.py'", :path => setup_py)
-      raise "Unable to find python package; tried #{setup_py}"
+    if File.exist?(setup_py)
+      logger.debug("Do job with setup.py")
+      load_package_info(setup_py)
+      install_to_staging(setup_py)
+    elsif File.exist?(pyproject_toml)
+      logger.debug("Do job with pyproject.toml")
+      load_package_info_toml(setup_py)
+      install_to_staging_toml(setup_py)
+    else
+      logger.error("Could not find neither 'setup.py' nor 'pyproject.toml'", :path => path_to_package)
+      raise "Unable to find python package; tried #{setup_py} and #{pyproject_toml}"
     end
 
-    load_package_info(setup_py)
-    install_to_staging(setup_py)
   end # def input
 
   # Download the given package if necessary. If version is given, that version
@@ -195,8 +203,131 @@ class FPM::Package::Python < FPM::Package
     return dirs.first
   end # def download
 
-  # Load the package information like name, version, dependencies.
-  def load_package_info(setup_py)
+  # Load the package information like name, version, dependencies via pyproject.toml.
+  def load_package_info_toml(setup_data)
+    if !attributes[:python_package_prefix].nil?
+      attributes[:python_package_name_prefix] = attributes[:python_package_prefix]
+    end
+
+    begin
+      json_test_code = [
+        "try:",
+        "  import json",
+        "except ImportError:",
+        "  import simplejson as json"
+      ].join("\n")
+      safesystem("#{attributes[:python_bin]} -c '#{json_test_code}'")
+    rescue FPM::Util::ProcessFailed => e
+      logger.error("Your python environment is missing json support (either json or simplejson python module). I cannot continue without this.", :python => attributes[:python_bin], :error => e)
+      raise FPM::Util::ProcessFailed, "Python (#{attributes[:python_bin]}) is missing simplejson or json modules."
+    end
+
+    begin
+      safesystem("#{attributes[:python_bin]} -c 'import importlib_metadata'")
+    rescue FPM::Util::ProcessFailed => e
+      logger.error("Your python environment is missing a working importlib_metadata module. I tried to find the 'importlib_metadata' module but failed.", :python => attributes[:python_bin], :error => e)
+      raise FPM::Util::ProcessFailed, "Python (#{attributes[:python_bin]}) is missing importlib_metadata module."
+    end
+
+    # Add ./pyfpm/ to the python library path
+    pylib = File.expand_path(File.dirname(__FILE__))
+
+    # chdir to the directory holding setup.py because some python setup.py's assume that you are
+    # in the same directory.
+    setup_dir = File.dirname(setup_data)
+
+    output = ::Dir.chdir(setup_dir) do
+      tmp = build_path("metadata.json")
+
+      toml_metadata_code = [
+        "from pyfpm_toml import get_metadata_toml",
+        "gmt = get_metadata_toml.get_metadata_toml()",
+        "gmt.run('#{tmp}')"
+      ].join("; ")
+
+      get_metadata_cmd = "env PYTHONPATH=#{pylib}:$PYTHONPATH #{attributes[:python_bin]} " \
+        " -c " \
+        "#{Shellwords.escape(toml_metadata_code)}"
+
+      # @todo FIXME!
+      #      if attributes[:python_obey_requirements_txt?]
+      #        setup_cmd += " --load-requirements-txt"
+      #       end
+
+      # Capture the output, which will be JSON metadata describing this python
+      # package. See fpm/lib/fpm/package/pyfpm_toml/get_metadata.py for more
+      # details.
+      logger.info("fetching package metadata", :get_metadata_cmd => get_metadata_cmd)
+
+      success = safesystem(get_metadata_cmd)
+      #%x{#{get_metadata_cmd}}
+      if !success
+        logger.error("pyfpm_toml get_metadata failed", :command => get_metadata_cmd,
+                     :exitcode => $?.exitstatus)
+        raise "An unexpected error occurred while processing the pyproject.toml file"
+      end
+      File.read(tmp)
+    end
+
+    logger.debug("result from `pyfpm_toml get_metadata`", :data => output)
+    metadata = JSON.parse(output)
+    logger.info("object output of pyfpm_toml get_metadata", :json => metadata)
+
+    self.architecture = metadata["architecture"]
+    self.description = metadata["description"]
+    # Sometimes the license field is multiple lines; do best-effort and just
+    # use the first line.
+    if metadata["license"]
+      self.license = metadata["license"].split(/[\r\n]+/).first
+    end
+    self.version = metadata["version"]
+    self.url = metadata["url"]
+
+    # name prefixing is optional, if enabled, a name 'foo' will become
+    # 'python-foo' (depending on what the python_package_name_prefix is)
+    if attributes[:python_fix_name?]
+      self.name = fix_name(metadata["name"])
+    else
+      self.name = metadata["name"]
+    end
+
+    # convert python-Foo to python-foo if flag is set
+    self.name = self.name.downcase if attributes[:python_downcase_name?]
+
+    if !attributes[:no_auto_depends?] and attributes[:python_dependencies?]
+      metadata["dependencies"].each do |dep|
+        dep_re = /^([^<>!= ]+)\s*(?:([~<>!=]{1,2})\s*(.*))?$/
+        match = dep_re.match(dep)
+        if match.nil?
+          logger.error("Unable to parse dependency", :dependency => dep)
+          raise FPM::InvalidPackageConfiguration, "Invalid dependency '#{dep}'"
+        end
+        name, cmp, version = match.captures
+
+        next if attributes[:python_disable_dependency].include?(name)
+
+        # convert == to =
+        if cmp == "==" or cmp == "~="
+          logger.info("Converting == dependency requirement to =", :dependency => dep )
+          cmp = "="
+        end
+
+        # dependency name prefixing is optional, if enabled, a name 'foo' will
+        # become 'python-foo' (depending on what the python_package_name_prefix
+        # is)
+        name = fix_name(name) if attributes[:python_fix_dependencies?]
+
+        # convert dependencies from python-Foo to python-foo
+        name = name.downcase if attributes[:python_downcase_dependencies?]
+
+        self.dependencies << "#{name} #{cmp} #{version}"
+      end
+    end # if attributes[:python_dependencies?]
+  end # def load_package_info_toml
+
+
+  # Load the package information like name, version, dependencies via setup.py.
+  def load_package_info(setup_data)
     if !attributes[:python_package_prefix].nil?
       attributes[:python_package_name_prefix] = attributes[:python_package_prefix]
     end
@@ -226,7 +357,7 @@ class FPM::Package::Python < FPM::Package
 
     # chdir to the directory holding setup.py because some python setup.py's assume that you are
     # in the same directory.
-    setup_dir = File.dirname(setup_py)
+    setup_dir = File.dirname(setup_data)
 
     output = ::Dir.chdir(setup_dir) do
       tmp = build_path("metadata.json")
@@ -322,9 +453,29 @@ class FPM::Package::Python < FPM::Package
     end
   end # def fix_name
 
-  # Install this package to the staging directory
-  def install_to_staging(setup_py)
-    project_dir = File.dirname(setup_py)
+  # Install this package to the staging directory via pyproject.toml
+  def install_to_staging_toml(setup_data)
+    project_dir = File.dirname(setup_data)
+
+    # Some setup's assume $PWD == current directory of pyproject.toml, so let's
+    # chdir first.
+    ::Dir.chdir(project_dir) do
+      flags = [ "--root", staging_path ]
+      if !attributes[:prefix].nil?
+        flags += [ "--prefix", attributes[:prefix] ]
+      else
+        flags += ["--prefix", "/usr/local/"]
+      end
+
+      # "--check-build-dependencies",
+      safesystem(*attributes[:python_pip], "install", ".", "--use-pep517", *flags)
+    end
+  end # def install_to_staging_toml
+
+
+  # Install this package to the staging directory via setup.py
+  def install_to_staging(setup_data)
+    project_dir = File.dirname(setup_data)
 
     prefix = "/"
     prefix = attributes[:prefix] unless attributes[:prefix].nil?
