@@ -42,8 +42,8 @@ class get_metadata_wheel:
         else:
             data["architecture"] = "all"
 
-        print('REQ:', fpm_wheel.requires, file=sys.stderr)
-        print('REQ DIST:', fpm_wheel.requires_dist, file=sys.stderr)
+        print('REQ-TOML:', fpm_wheel.requires, file=sys.stderr)
+        print('REQ-TOML DIST:', fpm_wheel.requires_dist, file=sys.stderr)
 
         final_deps = []
 

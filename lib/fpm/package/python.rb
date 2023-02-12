@@ -79,7 +79,11 @@ class FPM::Package::Python < FPM::Package
   option "--setup-py-arguments", "setup_py_argument",
     "Arbitrary argument(s) to be passed to setup.py",
     :multivalued => true, :attribute_name => :python_setup_py_arguments,
-    :default => [] 
+    :default => []
+  option "--build-backend-arguments", "build_backend_argument",
+         "Arbitrary argument(s) to be passed to pep517 build backend",
+     :multivalued => true, :attribute_name => :python_build_backend_arguments,
+     :default => []
   option "--internal-pip", :flag,
     "Use the pip module within python to install modules - aka 'python -m pip'. This is the recommended usage since Python 3.4 (2014) instead of invoking the 'pip' script",
     :attribute_name => :python_internal_pip,
@@ -228,8 +232,9 @@ class FPM::Package::Python < FPM::Package
       #      flags += [ "--verbose --verbose --verbose"]
       opt = "w"  # w == wipe
       flags += [ "--exists-action", opt]
-      opt = ":all:"
-      flags += [ "--no-binary", opt]
+      # Replace with --no-cache-dir ?
+      # opt = ":all:"
+      # flags += [ "--no-binary", opt]
       opt = "off"
       flags += [ "--progress-bar", opt]
       # @todo --config-settings for PEP 517 build backend (KEY=VALUE, can be multiple)
@@ -500,17 +505,53 @@ class FPM::Package::Python < FPM::Package
   def install_to_staging_toml(setup_data)
     project_dir = File.dirname(setup_data)
 
+    prefix = "/"
+    prefix = attributes[:prefix] unless attributes[:prefix].nil?
+
     # Some setup's assume $PWD == current directory of pyproject.toml, so let's
     # chdir first.
     ::Dir.chdir(project_dir) do
       flags = [ "--root", staging_path ]
+
       if !attributes[:prefix].nil?
         flags += [ "--prefix", attributes[:prefix] ]
       else
         flags += ["--prefix", "/usr/local/"]
       end
 
-      # "--check-build-dependencies",
+      # if !attributes[:python_install_lib].nil?
+      #   flags += [ "--target", File.join(prefix, attributes[:python_install_lib]) ]
+      # elsif !attributes[:prefix].nil?
+      #   # since prefix is given, but not python_install_lib, assume PREFIX/lib
+      #   flags += [ "--target", File.join(prefix, "lib") ]
+      # end
+
+      # if !attributes[:python_install_data].nil?
+      #   flags += [ "--install-data", File.join(prefix, attributes[:python_install_data]) ]
+      # elsif !attributes[:prefix].nil?
+      #   # prefix given, but not python_install_data, assume PREFIX/data
+      #   flags += [ "--install-data", File.join(prefix, "data") ]
+      # end
+      #
+      # if !attributes[:python_install_bin].nil?
+      #   flags += [ "--install-scripts", File.join(prefix, attributes[:python_install_bin]) ]
+      # elsif !attributes[:prefix].nil?
+      #   # prefix given, but not python_install_bin, assume PREFIX/bin
+      #   flags += [ "--install-scripts", File.join(prefix, "bin") ]
+      # end
+
+      opt = "off"
+      flags += [ "--progress-bar", opt]
+      flags += [ "--no-deps" ]
+      flags += [ "--check-build-dependencies" ]
+
+      if !attributes[:python_build_backend_arguments].nil? and !attributes[:python_build_backend_arguments].empty?
+        # Add optional arguments for pep517 build backend
+        attributes[:python_build_backend_arguments].each do |a|
+          flags += [ "--config-settings", a ]
+        end
+      end
+
       safesystem(*attributes[:python_pip], "install", ".", "--use-pep517", *flags)
     end
   end # def install_to_staging_toml
