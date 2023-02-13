@@ -1,8 +1,8 @@
 import os
 import sys
 import pkg_resources
-import traceback
 from pkginfo import Wheel
+import traceback
 
 import json
 

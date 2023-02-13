@@ -235,9 +235,10 @@ class FPM::Package::Python < FPM::Package
       # Replace with --no-cache-dir ?
       # opt = ":all:"
       # flags += [ "--no-binary", opt]
+      flags += [ "--no-cache-dir"]
       opt = "off"
       flags += [ "--progress-bar", opt]
-      # @todo --config-settings for PEP 517 build backend (KEY=VALUE, can be multiple)
+      # @todo FIXME!!! --config-settings for PEP 517 build backend (KEY=VALUE, can be multiple)
 
 
       safesystem(*attributes[:python_pip], "wheel", ".", *flags)
@@ -258,16 +259,10 @@ class FPM::Package::Python < FPM::Package
     end
 
     begin
-      json_test_code = [
-        "try:",
-        "  import json",
-        "except ImportError:",
-        "  import simplejson as json"
-      ].join("\n")
-      safesystem("#{attributes[:python_bin]} -c '#{json_test_code}'")
+      safesystem("#{attributes[:python_bin]} -c 'import json'")
     rescue FPM::Util::ProcessFailed => e
-      logger.error("Your python environment is missing json support (either json or simplejson python module). I cannot continue without this.", :python => attributes[:python_bin], :error => e)
-      raise FPM::Util::ProcessFailed, "Python (#{attributes[:python_bin]}) is missing simplejson or json modules."
+      logger.error("Your python environment is missing json support. I cannot continue without this.", :python => attributes[:python_bin], :error => e)
+      raise FPM::Util::ProcessFailed, "Python (#{attributes[:python_bin]}) is missing json modules."
     end
 
     begin
@@ -275,6 +270,13 @@ class FPM::Package::Python < FPM::Package
     rescue FPM::Util::ProcessFailed => e
       logger.error("Your python environment is missing a working importlib.metadata module. I tried to find the 'importlib.metadata' module but failed.", :python => attributes[:python_bin], :error => e)
       raise FPM::Util::ProcessFailed, "Python (#{attributes[:python_bin]}) is missing importlib.metadata module."
+    end
+
+    begin
+      safesystem("#{attributes[:python_bin]} -c 'from pkginfo import Wheel'")
+    rescue FPM::Util::ProcessFailed => e
+      logger.error("Your python environment is missing a working pkginfo.Wheel module. I tried to find the 'importlib.Wheel' module but failed.", :python => attributes[:python_bin], :error => e)
+      raise FPM::Util::ProcessFailed, "Python (#{attributes[:python_bin]}) is missing pkginfo.Wheel module."
     end
 
     # Add ./pyfpm_wheel/ to the python library path
