@@ -513,12 +513,13 @@ class FPM::Package::Python < FPM::Package
     ::Dir.chdir(project_dir) do
       flags = [ "--root", staging_path ]
 
-      if !attributes[:prefix].nil?
-        flags += [ "--prefix", attributes[:prefix] ]
-      else
-        flags += ["--prefix", "/usr/local/"]
-      end
+      # if !attributes[:prefix].nil?
+      #   flags += [ "--prefix", attributes[:prefix] ]
+      # else
+      #   flags += ["--prefix", "/usr/local/"]
+      # end
 
+      # @todo FIXME!!
       # if !attributes[:python_install_lib].nil?
       #   flags += [ "--target", File.join(prefix, attributes[:python_install_lib]) ]
       # elsif !attributes[:prefix].nil?
@@ -543,6 +544,7 @@ class FPM::Package::Python < FPM::Package
       opt = "off"
       flags += [ "--progress-bar", opt]
       flags += [ "--no-deps" ]
+      flags += [ "--use-pep517" ]
       flags += [ "--check-build-dependencies" ]
 
       if !attributes[:python_build_backend_arguments].nil? and !attributes[:python_build_backend_arguments].empty?
@@ -552,7 +554,7 @@ class FPM::Package::Python < FPM::Package
         end
       end
 
-      safesystem(*attributes[:python_pip], "install", ".", "--use-pep517", *flags)
+      safesystem(*attributes[:python_pip], "install", ".", *flags)
     end
   end # def install_to_staging_toml
 
