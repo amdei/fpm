@@ -265,12 +265,12 @@ class FPM::Package::Python < FPM::Package
       raise FPM::Util::ProcessFailed, "Python (#{attributes[:python_bin]}) is missing json modules."
     end
 
-    begin
-      safesystem("#{attributes[:python_bin]} -c 'import importlib.metadata'")
-    rescue FPM::Util::ProcessFailed => e
-      logger.error("Your python environment is missing a working importlib.metadata module. I tried to find the 'importlib.metadata' module but failed.", :python => attributes[:python_bin], :error => e)
-      raise FPM::Util::ProcessFailed, "Python (#{attributes[:python_bin]}) is missing importlib.metadata module."
-    end
+    # begin
+    #   safesystem("#{attributes[:python_bin]} -c 'import importlib.metadata'")
+    # rescue FPM::Util::ProcessFailed => e
+    #   logger.error("Your python environment is missing a working importlib.metadata module. I tried to find the 'importlib.metadata' module but failed.", :python => attributes[:python_bin], :error => e)
+    #   raise FPM::Util::ProcessFailed, "Python (#{attributes[:python_bin]}) is missing importlib.metadata module."
+    # end
 
     begin
       safesystem("#{attributes[:python_bin]} -c 'from pkginfo import Wheel'")
