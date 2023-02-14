@@ -114,7 +114,8 @@ class FPM::Package::Python < FPM::Package
       logger.debug("Do job with pyproject.toml")
       wheel_path = build_py_wheel(setup_py)
       load_package_info_wheel(setup_py, wheel_path)
-      install_to_staging_toml(setup_py)
+      # install_to_staging_toml(setup_py)
+      install_to_staging_toml(wheel_path)
     elsif File.exist?(setup_py)
       logger.debug("Do job with setup.py")
       load_package_info(setup_py)
@@ -213,33 +214,50 @@ class FPM::Package::Python < FPM::Package
   def build_py_wheel(setup_data)
     project_dir = File.dirname(setup_data)
 
-    # prefix = "/"
-    # prefix = attributes[:prefix] unless attributes[:prefix].nil?
+    prefix = "/"
+    prefix = attributes[:prefix] unless attributes[:prefix].nil?
 
     wheel_dir = "./fpm-wheel"
     # Some assume $PWD == current directory of package, so let's
     # chdir first.
     ::Dir.chdir(project_dir) do
-      #      wheel_dir = project_dir + "/fpm-wheel"
 
+      # @todo FIXME!!! - is it necessary?
       flags = [ "--python", attributes[:python_bin] ]
+
+      # @todo FIXME!!!
+      # pip wheel:
+      # no such option: --prefix
+      # Should we revert to install to staging not from wheel, but from original source dist?
+      # if !attributes[:prefix].nil?
+      #   flags += [ "--prefix", attributes[:prefix] ]
+      # else
+      #   flags += ["--prefix", "/usr/local/"]
+      # end
+
       flags += [ "--wheel-dir", wheel_dir ]
-      flags += [ "--use-pep517"]
       flags += [ "--no-input"]
-      flags += [ "--no-deps"]
       flags += [ "--disable-pip-version-check"]
       flags += [ "--no-python-version-warning"]
       #      flags += [ "--verbose --verbose --verbose"]
       opt = "w"  # w == wipe
       flags += [ "--exists-action", opt]
-      # Replace with --no-cache-dir ?
-      # opt = ":all:"
-      # flags += [ "--no-binary", opt]
+      # @todo FIXME!!! is it really necessary?
       flags += [ "--no-cache-dir"]
       opt = "off"
       flags += [ "--progress-bar", opt]
-      # @todo FIXME!!! --config-settings for PEP 517 build backend (KEY=VALUE, can be multiple)
+      flags += [ "--no-deps" ]
+      flags += [ "--use-pep517" ]
+      flags += [ "--check-build-dependencies" ]
 
+      # @todo FIXME!!! --config-settings for PEP 517 build backend (KEY=VALUE, can be multiple)
+      # I have no clue where to get all that 'options' and any description of possible 'backends'
+      if !attributes[:python_build_backend_arguments].nil? and !attributes[:python_build_backend_arguments].empty?
+        # Add optional arguments for pep517 build backend
+        attributes[:python_build_backend_arguments].each do |a|
+          flags += [ "--config-settings", a ]
+        end
+      end
 
       safesystem(*attributes[:python_pip], "wheel", ".", *flags)
     end
@@ -265,13 +283,6 @@ class FPM::Package::Python < FPM::Package
       raise FPM::Util::ProcessFailed, "Python (#{attributes[:python_bin]}) is missing json modules."
     end
 
-    # begin
-    #   safesystem("#{attributes[:python_bin]} -c 'import importlib.metadata'")
-    # rescue FPM::Util::ProcessFailed => e
-    #   logger.error("Your python environment is missing a working importlib.metadata module. I tried to find the 'importlib.metadata' module but failed.", :python => attributes[:python_bin], :error => e)
-    #   raise FPM::Util::ProcessFailed, "Python (#{attributes[:python_bin]}) is missing importlib.metadata module."
-    # end
-
     begin
       safesystem("#{attributes[:python_bin]} -c 'from pkginfo import Wheel'")
     rescue FPM::Util::ProcessFailed => e
@@ -282,7 +293,7 @@ class FPM::Package::Python < FPM::Package
     # Add ./pyfpm_wheel/ to the python library path
     pylib = File.expand_path(File.dirname(__FILE__))
 
-    # chdir to the directory holding setup.py because some python setup.py's assume that you are
+    # chdir to the directory holding setup.py because some python setups assume that you are
     # in the same directory.
     setup_dir = File.dirname(setup_data)
 
@@ -503,9 +514,10 @@ class FPM::Package::Python < FPM::Package
     end
   end # def fix_name
 
+
   # Install this package to the staging directory via pyproject.toml
-  def install_to_staging_toml(setup_data)
-    project_dir = File.dirname(setup_data)
+  def install_to_staging_toml(wheel_path)
+    project_dir = File.dirname(wheel_path)
 
     prefix = "/"
     prefix = attributes[:prefix] unless attributes[:prefix].nil?
@@ -515,48 +527,34 @@ class FPM::Package::Python < FPM::Package
     ::Dir.chdir(project_dir) do
       flags = [ "--root", staging_path ]
 
-      # if !attributes[:prefix].nil?
-      #   flags += [ "--prefix", attributes[:prefix] ]
-      # else
-      #   flags += ["--prefix", "/usr/local/"]
-      # end
-
-      # @todo FIXME!!
       # if !attributes[:python_install_lib].nil?
-      #   flags += [ "--target", File.join(prefix, attributes[:python_install_lib]) ]
+      #   flags += [ "--prefix", attributes[:python_install_lib] ]
       # elsif !attributes[:prefix].nil?
       #   # since prefix is given, but not python_install_lib, assume PREFIX/lib
-      #   flags += [ "--target", File.join(prefix, "lib") ]
+      #   flags += [ "--prefix", File.join(prefix, "lib") ]
       # end
 
-      # if !attributes[:python_install_data].nil?
-      #   flags += [ "--install-data", File.join(prefix, attributes[:python_install_data]) ]
-      # elsif !attributes[:prefix].nil?
-      #   # prefix given, but not python_install_data, assume PREFIX/data
-      #   flags += [ "--install-data", File.join(prefix, "data") ]
-      # end
-      #
-      # if !attributes[:python_install_bin].nil?
-      #   flags += [ "--install-scripts", File.join(prefix, attributes[:python_install_bin]) ]
-      # elsif !attributes[:prefix].nil?
-      #   # prefix given, but not python_install_bin, assume PREFIX/bin
-      #   flags += [ "--install-scripts", File.join(prefix, "bin") ]
-      # end
+      if !attributes[:python_install_lib].nil?
+        # @todo FIXME!!! --target does really strange things...
+        # When specified, all package content goes to /tmp in result deb.
+        #flags += [ "--target", attributes[:python_install_lib] ]
+        #
+        # With --prefix things is not getting easier -
+        # when --python-install-lib=/usr/local-mega/lib/python3.9/dist-packages/ specified
+        # all package content goes to
+        # /usr/local-mega/lib/python3.9/dist-packages/lib/python3.9/site-packages
+        # in result deb.
+        #flags += [ "--prefix", attributes[:python_install_lib] ]
+      elsif !attributes[:prefix].nil?
+        # since prefix is given, but not python_install_lib, assume PREFIX/lib
+        flags += [ "--prefix", File.join(prefix, "lib") ]
+      end
 
       opt = "off"
       flags += [ "--progress-bar", opt]
       flags += [ "--no-deps" ]
-      flags += [ "--use-pep517" ]
-      flags += [ "--check-build-dependencies" ]
 
-      if !attributes[:python_build_backend_arguments].nil? and !attributes[:python_build_backend_arguments].empty?
-        # Add optional arguments for pep517 build backend
-        attributes[:python_build_backend_arguments].each do |a|
-          flags += [ "--config-settings", a ]
-        end
-      end
-
-      safesystem(*attributes[:python_pip], "install", ".", *flags)
+      safesystem(*attributes[:python_pip], "install", *flags, wheel_path)
     end
   end # def install_to_staging_toml
 
