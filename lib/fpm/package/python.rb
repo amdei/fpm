@@ -553,6 +553,9 @@ class FPM::Package::Python < FPM::Package
       opt = "off"
       flags += [ "--progress-bar", opt]
       flags += [ "--no-deps" ]
+      # Otherwise it'll complain on already installed distribution packages.
+      # Why? Have no idea, since --root is always specified, it supposed to be safe.
+      flags += [ "--ignore-installed" ]
 
       safesystem(*attributes[:python_pip], "install", *flags, wheel_path)
     end
