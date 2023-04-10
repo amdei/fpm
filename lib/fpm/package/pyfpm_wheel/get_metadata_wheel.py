@@ -47,9 +47,8 @@ class get_metadata_wheel:
             for name in names:
                 if name.endswith('.dist-info/WHEEL'):
                     for line in archive.read(name).split(b"\n"):
-                        line_lower = str(line).lower().strip()
-                        if line_lower.startswith('root-is-purelib') and \
-                           line_lower.endswith('true'):
+                        line_lower = str(line.decode()).lower().strip()
+                        if line_lower.startswith('root-is-purelib') and line_lower.endswith('true'):
                            return True
 
         return False
@@ -76,10 +75,11 @@ class get_metadata_wheel:
             data["url"] =  self.get_home_url(fpm_wheel.project_urls)
 
         # @todo Can anyone provide a package, where fpm_wheel.requires_external is 'true'?
-        if fpm_wheel.requires_external or not self.__wheel_root_is_pure():
-            data["architecture"] = "native"
-        else:
+#        print('REQ-TOML EXTERNAL:', fpm_wheel.requires_external, file=sys.stderr)
+        if self.__wheel_root_is_pure() and not fpm_wheel.requires_external:
             data["architecture"] = "all"
+        else:
+            data["architecture"] = "native"
 
 #        print('REQ-TOML:', fpm_wheel.requires, file=sys.stderr)
 #        print('REQ-TOML DIST:', fpm_wheel.requires_dist, file=sys.stderr)
