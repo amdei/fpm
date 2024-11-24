@@ -348,6 +348,7 @@ class FPM::Package::Python < FPM::Package
     if metadata["license"]
       self.license = metadata["license"].split(/[\r\n]+/).first
     end
+    self.vendor = metadata["author"]
     self.version = metadata["version"]
     self.url = metadata["url"]
 
@@ -462,6 +463,7 @@ class FPM::Package::Python < FPM::Package
       self.license = metadata["license"].split(/[\r\n]+/).first
     end
     self.version = metadata["version"]
+    self.vendor = metadata["author"]
     self.url = metadata["url"]
 
     # name prefixing is optional, if enabled, a name 'foo' will become

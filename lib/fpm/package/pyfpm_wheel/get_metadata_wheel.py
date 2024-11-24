@@ -15,7 +15,7 @@ class get_metadata_wheel:
     def __init__(self, wheel_path):
         fqn = os.path.abspath(os.path.normpath(wheel_path))
         if not fqn.endswith('.whl'):
-            raise ValueError('Wheel file must hav .whl extension!')
+            raise ValueError('Wheel file must have .whl extension!')
         self.wheel_path = fqn
 
     @staticmethod
@@ -76,7 +76,7 @@ class get_metadata_wheel:
         else:
             data["url"] =  self.get_home_url(fpm_wheel.project_urls)
 
-        # @todo Can anyone provide a package, where fpm_wheel.requires_external is 'true'?
+        # @todo Can anyone provide a python package, where fpm_wheel.requires_external would result in 'true'?
         if self.__wheel_root_is_pure() and not fpm_wheel.requires_external:
             data["architecture"] = "all"
         else:
