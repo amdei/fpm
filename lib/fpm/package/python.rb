@@ -96,7 +96,9 @@ class FPM::Package::Python < FPM::Package
   # The 'package' can be any of:
   #
   # * A name of a package on pypi (ie; easy_install some-package)
+  # * The path to a directory containing pyproject.toml
   # * The path to a directory containing setup.py
+  # * The path to a pyproject.toml
   # * The path to a setup.py
   def input(package)
     path_to_package = download_if_necessary(package, version)
@@ -115,12 +117,10 @@ class FPM::Package::Python < FPM::Package
       pyproject_toml = path_to_package
     end
 
-    # @todo Swap it! - TOML priority is for debugging only!
     if File.exist?(pyproject_toml)
       logger.debug("Do job with pyproject.toml")
       wheel_path = build_py_wheel(setup_py)
       load_package_info_wheel(setup_py, wheel_path)
-      # install_to_staging_toml(setup_py)
       install_to_staging_toml(wheel_path)
     elsif File.exist?(setup_py)
       logger.debug("Do job with setup.py")
@@ -140,7 +140,7 @@ class FPM::Package::Python < FPM::Package
     # part should go elsewhere.
     path = package
     # If it's a path, assume local build.
-    if File.directory?(path) or (File.exist?(path) and File.basename(path) == "setup.py")
+    if File.directory?(path) or (File.exist?(path) and File.basename(path) == "setup.py") or (File.exist?(path) and File.basename(path) == "pyproject.toml")
       return path
     end
 
@@ -287,7 +287,7 @@ class FPM::Package::Python < FPM::Package
       safesystem("#{attributes[:python_bin]} -c 'import json'")
     rescue FPM::Util::ProcessFailed => e
       logger.error("Your python environment is missing json support. I cannot continue without this.", :python => attributes[:python_bin], :error => e)
-      raise FPM::Util::ProcessFailed, "Python (#{attributes[:python_bin]}) is missing json modules."
+      raise FPM::Util::ProcessFailed, "Python (#{attributes[:python_bin]}) is missing json module."
     end
 
     begin
@@ -328,7 +328,7 @@ class FPM::Package::Python < FPM::Package
       logger.info("fetching package wheel metadata", :get_metadata_cmd => get_metadata_cmd)
 
       success = safesystem(get_metadata_cmd)
-      #%x{#{get_metadata_cmd}}
+
       if !success
         logger.error("pyfpm_wheel get_metadata failed", :command => get_metadata_cmd,
                      :exitcode => $?.exitstatus)
