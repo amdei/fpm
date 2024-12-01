@@ -348,9 +348,18 @@ class FPM::Package::Python < FPM::Package
     if metadata["license"]
       self.license = metadata["license"].split(/[\r\n]+/).first
     end
-    self.vendor = metadata["author"]
-    self.version = metadata["version"]
-    self.url = metadata["url"]
+
+	if metadata["version"]
+		self.version = metadata["version"]
+	end
+
+   	if metadata["url"]
+		    self.url = metadata["url"]
+	end
+
+	if metadata["author"]
+		    self.vendor = metadata["author"]
+	end
 
     # name prefixing is optional, if enabled, a name 'foo' will become
     # 'python-foo' (depending on what the python_package_name_prefix is)
@@ -462,9 +471,17 @@ class FPM::Package::Python < FPM::Package
     if metadata["license"]
       self.license = metadata["license"].split(/[\r\n]+/).first
     end
-    self.version = metadata["version"]
-    self.vendor = metadata["author"]
-    self.url = metadata["url"]
+	if metadata["version"]
+		self.version = metadata["version"]
+	end
+
+   	if metadata["url"]
+		    self.url = metadata["url"]
+	end
+
+	if metadata["author"]
+		    self.vendor = metadata["author"]
+	end
 
     # name prefixing is optional, if enabled, a name 'foo' will become
     # 'python-foo' (depending on what the python_package_name_prefix is)

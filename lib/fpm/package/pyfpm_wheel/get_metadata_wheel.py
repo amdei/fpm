@@ -66,6 +66,7 @@ class get_metadata_wheel:
             "license": fpm_wheel.license,
         }
 
+        data["author"] = "Unknown <unknown@unknown.unknown>"
         if fpm_wheel.author:
             data["author"] = "%s" % fpm_wheel.author
         if fpm_wheel.author_email:
